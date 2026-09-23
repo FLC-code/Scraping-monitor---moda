@@ -1,18 +1,18 @@
 import streamlit as st
 import requests
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 import xml.etree.ElementTree as ET
 
 st.set_page_config(
-    page_title="Google Discover SEO Monitor - Multi-Site Pro",
+    page_title="Google Discover SEO Monitor - Time Pro",
     page_icon="🔍",
     layout="wide"
 )
 
 st.title("📊 Google Discover & SEO Content Monitor")
-st.markdown("Monitor najnowszych publikacji z wiodących serwisów modowych i lifestyle'owych pod kątem Google Discover.")
+st.markdown("Monitor najnowszych publikacji z filtrowaniem czasowym (ostatnie godziny/dni) pod kątem algorytmów Google Discover.")
 
-# Sidebar - Wybór serwisu
+# Sidebar - Konfiguracja
 st.sidebar.header("Konfiguracja Monitora")
 
 sites = {
@@ -27,10 +27,17 @@ sites = {
 selected_site_name = st.sidebar.selectbox("Wybierz serwis do analizy:", list(sites.keys()))
 sitemap_url = sites[selected_site_name]
 
-# Możliwość wpisania własnego linku opcjonalnie
 custom_sitemap = st.sidebar.text_input("Lub podaj własny adres sitemap.xml:", sitemap_url)
 if custom_sitemap:
     sitemap_url = custom_sitemap
+
+# Filtr czasowy w panelu bocznym
+st.sidebar.markdown("---")
+st.sidebar.header("⏱️ Filtr Czasowy Discover")
+time_filter_option = st.sidebar.selectbox(
+    "Pokaż artykuły z okresu:",
+    ["Wszystkie", "Ostatnie 8 godzin", "Ostatnie 16 godzin", "Ostatnie 24 godziny", "Ostatnie 2 dni", "Ostatnie 3 dni"]
+)
 
 def translate_title(title):
     dictionary = {
@@ -87,14 +94,12 @@ if st.sidebar.button("Pobierz i analizuj artykuły"):
             if response.status_code == 200:
                 root = ET.fromstring(response.content)
                 
-                # Obsługa namespace'ów i sitemap indeksowych
                 ns_uri = root.tag.split('}')[0].strip('{') if '}' in root.tag else 'http://www.sitemaps.org/schemas/sitemap/0.9'
                 ns = {'ns': ns_uri}
                 
                 urls = []
                 sitemaps = root.findall('ns:sitemap', ns)
                 
-                # Jeśli to sitemap index, pobieramy pierwszą podmapę (zazwyczaj najświeższą)
                 if sitemaps:
                     sub_sitemap_elem = sitemaps[0].find('ns:loc', ns)
                     if sub_sitemap_elem is not None:
@@ -110,17 +115,15 @@ if st.sidebar.button("Pobierz i analizuj artykuły"):
                     if loc is not None and loc.text:
                         urls.append({
                             "url": loc.text,
-                            "date": lastmod.text if lastmod is not None and lastmod.text else "Brak daty"
+                            "date": lastmod.text if lastmod is not None and lastmod.text else None
                         })
                 
                 processed = []
-                # Przetwarzamy do 60 najnowszych wpisów
-                for item in urls[:60]:
+                for item in urls[:100]: # Zwiększamy pulę do 100 dla lepszego pokrycia czasowego
                     clean_url = item["url"]
                     slug_part = clean_url.rstrip("/").split("/")[-1]
                     slug = slug_part.replace("-", " ").replace("_", " ").title()
                     
-                    # Jeśli slug jest pusty lub jest domeną, bierzemy przedostatni człon
                     if not slug or len(slug) < 3:
                         parts = [p for p in clean_url.split("/") if p]
                         if len(parts) >= 2:
@@ -128,19 +131,24 @@ if st.sidebar.button("Pobierz i analizuj artykuły"):
                             
                     category = classify_content(slug)
                     
-                    # Formatowanie daty
                     raw_date = item["date"]
-                    try:
-                        dt_obj = datetime.fromisoformat(raw_date.replace('Z', '+00:00'))
-                        formatted_date = dt_obj.strftime("%Y-%m-%d %H:%M")
-                    except:
-                        formatted_date = raw_date
-                        
+                    dt_obj = None
+                    formatted_date = "Brak daty"
+                    
+                    if raw_date:
+                        try:
+                            # Parsowanie ISO formatu daty z sitemapy
+                            dt_obj = datetime.fromisoformat(raw_date.replace('Z', '+00:00'))
+                            formatted_date = dt_obj.strftime("%Y-%m-%d %H:%M")
+                        except:
+                            formatted_date = raw_date
+                            
                     processed.append({
                         "url": clean_url,
                         "title": slug,
                         "translated_title": translate_title(slug),
-                        "date": formatted_date,
+                        "date_str": formatted_date,
+                        "datetime_obj": dt_obj,
                         "category": category
                     })
                     
@@ -152,28 +160,61 @@ if st.sidebar.button("Pobierz i analizuj artykuły"):
         except Exception as e:
             st.error(f"Błąd krytyczny podczas parsowania: {e}")
 
-# Wyświetlanie wyników, jeśli są w sesji
+# Wyświetlanie wyników i filtrowanie
 if st.session_state.processed_items:
     st.markdown(f"### Aktualnie analizowany serwis: `{st.session_state.current_site}`")
-    st.subheader("Filtrowanie zawartości")
     
-    categories = ["Wszystkie"] + sorted(list(set(i["category"] for i in st.session_state.processed_items)))
+    # Krok 1: Filtrowanie czasowe
+    now = datetime.now(timezone.utc)
+    time_filtered = []
+    
+    for item in st.session_state.processed_items:
+        dt = item["datetime_obj"]
+        include = True
+        
+        if time_filter_option != "Wszystkie" and dt is not None:
+            # Upewniamy się, że obiekt dt jest świadomy strefy czasowej
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+                
+            diff = now - dt
+            
+            if time_filter_option == "Ostatnie 8 godzin" and diff > timedelta(hours=8):
+                include = False
+            elif time_filter_option == "Ostatnie 16 godzin" and diff > timedelta(hours=16):
+                include = False
+            elif time_filter_option == "Ostatnie 24 godziny" and diff > timedelta(hours=24):
+                include = False
+            elif time_filter_option == "Ostatnie 2 dni" and diff > timedelta(days=2):
+                include = False
+            elif time_filter_option == "Ostatnie 3 dni" and diff > timedelta(days=3):
+                include = False
+        elif time_filter_option != "Wszystkie" and dt is None:
+            # Jeśli wybrano filtr czasowy, a sitemapa nie podała daty dla artykułu, pomijamy go
+            include = False
+            
+        if include:
+            time_filtered.append(item)
+
+    # Krok 2: Filtrowanie po kategoriach tematycznych
+    st.subheader("Filtrowanie zawartości")
+    categories = ["Wszystkie"] + sorted(list(set(i["category"] for i in time_filtered))) if time_filtered else ["Wszystkie"]
     selected_category = st.selectbox("Wybierz kategorię tematyczną Discover:", categories)
     
-    filtered = st.session_state.processed_items
+    final_filtered = time_filtered
     if selected_category != "Wszystkie":
-        filtered = [i for i in st.session_state.processed_items if i["category"] == selected_category]
+        final_filtered = [i for i in time_filtered if i["category"] == selected_category]
         
-    st.info(f"Wyświetlam {len(filtered)} artykułów po przefiltrowaniu.")
+    st.info(f"Wyświetlam {len(final_filtered)} artykułów (po zastosowaniu filtra czasowego i kategorii).")
     
-    for item in filtered:
+    for item in final_filtered:
         with st.expander(f"{item['category']} | {item['title'][:50]}..."):
             st.markdown(f"**Tytuł oryginalny:** {item['title']}")
             st.markdown(f"**Tytuł przetłumaczony:** `{item['translated_title']}`")
             st.write(f"**URL:** {item['url']}")
-            st.markdown(f"⏱️ **Data i godzina publikacji:** `{item['date']}`")
+            st.markdown(f"⏱️ **Data i godzina publikacji:** `{item['date_str']}`")
             st.markdown(f"📂 **Kategoria Discover:** {item['category']}")
             st.markdown("---")
             st.markdown("**Analiza pod Google Discover:**")
-            st.markdown("- Potencjał algorytmiczny: Wysoki (serwis wspierany w kanałach feedowych)")
+            st.markdown("- Świeżość treści: Idealna pod algorytmy feedowe[cite: 1]")
             st.markdown("- Optymalizacja mobilna i graficzna: Wymagana weryfikacja tagu `max-image-preview:large`")
