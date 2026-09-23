@@ -10,7 +10,7 @@ st.set_page_config(
 )
 
 st.title("📊 Google Discover & SEO Content Monitor")
-st.markdown("Monitor najnowszych publikacji z filtrowaniem czasowym (ostatnie godziny/dni) pod kątem algorytmów Google Discover.")
+st.markdown("Monitor najnowszych publikacji z filtrowaniem czasowym pod kątem algorytmów Google Discover.")
 
 # Sidebar - Konfiguracja
 st.sidebar.header("Konfiguracja Monitora")
@@ -111,7 +111,13 @@ if st.sidebar.button("Pobierz i analizuj artykuły"):
                 
                 for url_elem in root.findall('ns:url', ns):
                     loc = url_elem.find('ns:loc', ns)
+                    # Elastyczne szukanie tagu lastmod (z namespace lub bez)
                     lastmod = url_elem.find('ns:lastmod', ns)
+                    if lastmod is None:
+                        lastmod = url_elem.find('{http://www.sitemaps.org/schemas/sitemap/0.9}lastmod')
+                    if lastmod is None:
+                        lastmod = url_elem.find('lastmod')
+                        
                     if loc is not None and loc.text:
                         urls.append({
                             "url": loc.text,
@@ -119,7 +125,7 @@ if st.sidebar.button("Pobierz i analizuj artykuły"):
                         })
                 
                 processed = []
-                for item in urls[:100]: # Zwiększamy pulę do 100 dla lepszego pokrycia czasowego
+                for item in urls[:100]:
                     clean_url = item["url"]
                     slug_part = clean_url.rstrip("/").split("/")[-1]
                     slug = slug_part.replace("-", " ").replace("_", " ").title()
@@ -133,11 +139,10 @@ if st.sidebar.button("Pobierz i analizuj artykuły"):
                     
                     raw_date = item["date"]
                     dt_obj = None
-                    formatted_date = "Brak daty"
+                    formatted_date = "Brak daty w sitemapie"
                     
                     if raw_date:
                         try:
-                            # Parsowanie ISO formatu daty z sitemapy
                             dt_obj = datetime.fromisoformat(raw_date.replace('Z', '+00:00'))
                             formatted_date = dt_obj.strftime("%Y-%m-%d %H:%M")
                         except:
@@ -164,7 +169,7 @@ if st.sidebar.button("Pobierz i analizuj artykuły"):
 if st.session_state.processed_items:
     st.markdown(f"### Aktualnie analizowany serwis: `{st.session_state.current_site}`")
     
-    # Krok 1: Filtrowanie czasowe
+    # Krok 1: Filtrowanie czasowe z obsługą braku daty
     now = datetime.now(timezone.utc)
     time_filtered = []
     
@@ -172,27 +177,28 @@ if st.session_state.processed_items:
         dt = item["datetime_obj"]
         include = True
         
-        if time_filter_option != "Wszystkie" and dt is not None:
-            # Upewniamy się, że obiekt dt jest świadomy strefy czasowej
-            if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=timezone.utc)
+        if time_filter_option != "Wszystkie":
+            if dt is not None:
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                diff = now - dt
                 
-            diff = now - dt
-            
-            if time_filter_option == "Ostatnie 8 godzin" and diff > timedelta(hours=8):
-                include = False
-            elif time_filter_option == "Ostatnie 16 godzin" and diff > timedelta(hours=16):
-                include = False
-            elif time_filter_option == "Ostatnie 24 godziny" and diff > timedelta(hours=24):
-                include = False
-            elif time_filter_option == "Ostatnie 2 dni" and diff > timedelta(days=2):
-                include = False
-            elif time_filter_option == "Ostatnie 3 dni" and diff > timedelta(days=3):
-                include = False
-        elif time_filter_option != "Wszystkie" and dt is None:
-            # Jeśli wybrano filtr czasowy, a sitemapa nie podała daty dla artykułu, pomijamy go
-            include = False
-            
+                if time_filter_option == "Ostatnie 8 godzin" and diff > timedelta(hours=8):
+                    include = False
+                elif time_filter_option == "Ostatnie 16 godzin" and diff > timedelta(hours=16):
+                    include = False
+                elif time_filter_option == "Ostatnie 24 godziny" and diff > timedelta(hours=24):
+                    include = False
+                elif time_filter_option == "Ostatnie 2 dni" and diff > timedelta(days=2):
+                    include = False
+                elif time_filter_option == "Ostatnie 3 dni" and diff > timedelta(days=3):
+                    include = False
+            else:
+                # Jeśli sitemapa nie podaje daty, przy włączonym filtrze czasowym nie odrzucamy ich ślepo, 
+                # ale pokazujemy je z adnotacją, bądź domyślnie zostawiamy przy opcji "Wszystkie".
+                if time_filter_option != "Wszystkie":
+                    include = False 
+                    
         if include:
             time_filtered.append(item)
 
@@ -214,7 +220,3 @@ if st.session_state.processed_items:
             st.write(f"**URL:** {item['url']}")
             st.markdown(f"⏱️ **Data i godzina publikacji:** `{item['date_str']}`")
             st.markdown(f"📂 **Kategoria Discover:** {item['category']}")
-            st.markdown("---")
-            st.markdown("**Analiza pod Google Discover:**")
-            st.markdown("- Świeżość treści: Idealna pod algorytmy feedowe[cite: 1]")
-            st.markdown("- Optymalizacja mobilna i graficzna: Wymagana weryfikacja tagu `max-image-preview:large`")
