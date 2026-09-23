@@ -137,7 +137,8 @@ if data:
 
     for idx, item in enumerate(filtered_data): 
         with st.expander(f"📌 {item['title']} (Data: {item['lastmod']})"):
-            st.markdown(f"**Link do artykułu:** [{item['url']}]({item['url'])")
+            # POPRAWIONY LINIE PONIŻEJ (poprawne domknięcie f-stringa)
+            st.markdown(f"**Link do artykułu:** [{item['url']}]({item['url']})")
             
             # Algorytm oceniający nagłówek pod Google Discover
             title_len = len(item['title'])
