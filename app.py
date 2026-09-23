@@ -28,7 +28,6 @@ def fetch_sitemap():
                 loc = child.find('ns:loc', namespace)
                 lastmod = child.find('ns:lastmod', namespace)
                 if loc is not None:
-                    # Wyciąganie slug-a jako tytułu roboczego
                     url_string = loc.text
                     slug = url_string.split('/')[-1].replace('-', ' ').title()
                     if not slug:
@@ -50,11 +49,10 @@ with st.spinner("Pobieranie i analiza sitemapy whowhatwear.com..."):
 if data:
     st.success(f"Pomyślnie załadowano {len(data)} adresów URL z sitemapy!")
     
-    # --- PANEL BOCZNY (FILTRY I WYSZUKIWANIE - PUNKT 1) ---
+    # --- PANEL BOCZNY (FILTRY I WYSZUKIWANIE) ---
     st.sidebar.header("🔍 Filtry i Wyszukiwanie")
     search_query = st.sidebar.text_input("Szukaj frazy w adresie/tytule:", "").lower()
     
-    # Opcja filtrowania tylko najnowszych (PUNKT 2)
     today_str = datetime.now().strftime("%Y-%m-%d")
     only_today = st.sidebar.checkbox("Pokaż tylko dzisiejsze wpisy", value=False)
     
@@ -71,15 +69,15 @@ if data:
             
     st.sidebar.markdown(f"Znaleziono pasujących wpisów: **{len(filtered_data)}**")
     
-    # --- GŁÓWNA LISTA ORAZ ANALIZA Discover (PUNKT 3) ---
+    # --- GŁÓWNA LISTA ORAZ ANALIZA Discover ---
     st.subheader("📋 Lista artykułów i audyt pod Google Discover")
     st.info("Poniżej znajdziesz analizę nagłówków pod kątem algorytmów Google Discover (m.in. długość tytułu, obecność liczb/listicles, chwytliwość).")
 
-    for idx, item in enumerate(filtered_data[:50]): # Wyświetlamy pierwsze 50 pasujących
+    for idx, item in enumerate(filtered_data[:50]): 
         with st.expander(f"📌 {item['title']} (Aktualizacja: {item['lastmod']})"):
-            st.markdown(ర్శ**Link:** [{item['url']}]({item['url']}))
+            st.markdown(f"**Link:** [{item['url']}]({item['url']})")
             
-            # Algorytm oceniający nagłówek pod Google Discover (PUNKT 3)
+            # Algorytm oceniający nagłówek pod Google Discover
             title_len = len(item['title'])
             has_numbers = any(char.isdigit() for char in item['title'])
             
@@ -92,13 +90,11 @@ if data:
                 st.metric("Format Listicle (Liczby)", "Tak" if has_numbers else "Brak", 
                           delta="Wysoki CTR w Discover" if has_numbers else "Standard")
             with col3:
-                # Szacowany potencjał Discover na podstawie cech nagłówka
                 score = 70
                 if 40 <= title_len <= 75: score += 15
                 if has_numbers: score += 15
                 st.metric("Potencjał Discover", f"{score} / 100 pkt")
                 
-            # Wskazówki SEO dedykowane pod Discover
             if title_len < 40:
                 st.warning("⚠️ Tytuł jest stosunkowo krótki. W Discover lepiej sprawdzają się bardziej opisowe i emocjonalne nagłówki.")
             elif title_len > 85:
