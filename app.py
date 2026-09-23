@@ -16,15 +16,60 @@ st.sidebar.header("Konfiguracja")
 sitemap_url = st.sidebar.text_input("Adres Sitemap XML:", "https://www.whowhatwear.com/sitemap.xml")
 
 def translate_title(title):
-    translations = {
-        "These": "Te", "Are": "Są", "Replacing": "Zastępują",
-        "The Statement Denim Trend": "Trend na wyrazisty dym",
-        "Pants Are Dead": "Spodnie nie żyją", "And Skirts Sit Atop the Throne": "a spódnice zasiadają na tronie"
+    # Słownik powszechnych terminów modowych i zwrotów w slugach Who What Wear
+    dictionary = {
+        "Trend": "Trend",
+        "Boot": "Buty",
+        "Boots": "Buty",
+        "Shoe": "Buty",
+        "Shoes": "Buty",
+        "Denim": "Dżinsy",
+        "Jeans": "Dżinsy",
+        "Jacket": "Kurtka",
+        "Skirt": "Spódnica",
+        "Pants": "Spodnie",
+        "Bag": "Torebka",
+        "Bags": "Torebki",
+        "Sweater": "Sweter",
+        "Sweaters": "Swetry",
+        "Nails": "Paznokcie",
+        "Blush": "Róż do policzków",
+        "Outfit": "Stylizacje",
+        "Outfits": "Stylizacje",
+        "Fall": "Jesienne",
+        "Winter": "Zimowe",
+        "Spring": "Wiosenne",
+        "Summer": "Letnie",
+        "Style": "Styl",
+        "Celebrity": "Gwiazda",
+        "Red Carpet": "Czerwony Dywan",
+        "Wearing": "noszenia",
+        "Are Replacing": "zastępują",
+        "The Best": "Najlepsze",
+        "How To": "Jak",
+        "Why": "Dlaczego"
     }
+
+    # Inteligentne tłumaczenie zwrotów strukturalnych (np. "Foot Hugging Pump Heel Trend...")
     translated = title
-    for en, pl in translations.items():
+    
+    # Podmieniamy znane słowa z komponentów
+    for en, pl in dictionary.items():
+        # Zamieniamy słowa z zachowaniem wielkości liter lub jako całe człony
         translated = translated.replace(en, pl)
-    return f"[PL] {translated}" if translated != title else f"[PL] {title}"
+        translated = translated.replace(en.lower(), pl.lower())
+
+    # Jeśli struktura przypomina angielski opis typu "X Trend", przekształcamy na naturalny polski szyk
+    if "Trend" in translated and not translated.startswith("Trend"):
+        parts = translated.split(" Trend")
+        if len(parts) == 2 and parts[1].strip():
+            translated = f"Trend na: {parts[0]} ({parts[1].strip()})"
+        else:
+            translated = f"Trend: {parts[0]}"
+    elif "Stylizacje" in translated or "Outfit" in title:
+        translated = f"Modna stylizacje: {translated.replace('Stylizacje', '').strip()}"
+
+    return f"[PL] {translated}"
 
 def classify_content(title):
     title_lower = title.lower()
@@ -34,7 +79,7 @@ def classify_content(title):
         return "🔢 Zestawienie (Listicle)"
     elif any(word in title_lower for word in ['how', 'guide', 'jak', 'poradnik']):
         return "📖 Poradnik / How-to"
-    elif any(word in title_lower for word in ['boot', 'shoe', 'denim', 'jeans', 'jacket', 'trend', 'skirt']):
+    elif any(word in title_lower for word in ['boot', 'shoe', 'denim', 'jeans', 'jacket', 'trend', 'skirt', 'nails', 'blush']):
         return "✨ Trendy Modowe"
     else:
         return "💎 Styl Życia / Gwiazdy"
